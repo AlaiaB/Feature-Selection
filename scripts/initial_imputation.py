@@ -93,9 +93,10 @@ filtered_comorbidities = [c for c in comorbidities if c != 'IMC']
 # Replace NaN values in 'filtered_comorbidities' columns with 'No'
 filtered_data[filtered_comorbidities] = filtered_data[filtered_comorbidities].fillna('No')
 
-# Selecting initial variables
-na_count_patient = filtered_data.groupby(['REGISTRO', 'Fingplan']).apply(lambda x: x.isna().mean())
-rest_selection = na_count_patient.loc[:, (na_count_patient.dtypes == np.float64) & (na_count_patient.iloc[0, :] <= 0.30)].columns
+# Selecting initial variables if at least 70% of patients have at least one record for the variable
+na_count_patient = filtered_data.groupby(['REGISTRO', 'Fingplan']).apply(lambda x: x.isna().all()).mean()
+na_count_mask = na_count_patient <= 0.3
+rest_selection = filtered_data.loc[:, na_count_mask].columns
 selection = list(set(file_vars['cte'] + rest_selection.to_list() + file_vars['track']).intersection(set(filtered_data.columns)))
 deleted = list(set(filtered_data.columns) - set(selection))
 filtered_data = filtered_data[selection]
