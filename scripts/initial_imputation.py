@@ -2,7 +2,6 @@
 
 import json
 import logging
-
 import numpy as np
 import pandas as pd
 
@@ -19,8 +18,8 @@ filtered_data = pd.read_csv(DIR_DAT + "/datos_filtrados.csv", low_memory=False)
 
 # Add auxiliary column
 filtered_data['idx_'] = range(1, len(filtered_data) + 1)
-
-
+initial = filtered_data.columns
+logging.info(f"Initial variables: {len(filtered_data.columns)} \n {filtered_data.columns}")
 def convert_to_numeric(column):
     """Convert columns to numeric format."""
     column = column.copy()
@@ -50,7 +49,7 @@ def probably_continuous(column, min_prop_num=0.95, min_distinct=22):
 
 # Identify columns that are likely to be continuous
 continuous = [col for col in filtered_data.columns if probably_continuous(filtered_data[col])]
-logging.info(f"Continuous variables: {continuous}")
+logging.info(f"Continuous variables: {len(continuous)}. \n {continuous}")
 
 # Convert all the identified continuous columns to numeric format
 for col in continuous:
@@ -100,7 +99,7 @@ rest_selection = na_count_patient.loc[:, (na_count_patient.dtypes == np.float64)
 selection = list(set(file_vars['cte'] + rest_selection.to_list() + file_vars['track']).intersection(set(filtered_data.columns)))
 deleted = list(set(filtered_data.columns) - set(selection))
 filtered_data = filtered_data[selection]
-logging.info(f"Variables eliminated due to insufficient values: {deleted}")
+logging.info(f"Variables eliminated due to insufficient values: {len(deleted)}")
 
 # Discarding some variables based on their semantics
 discard = [
@@ -112,6 +111,8 @@ discard = [
 ]
 discard_dates = list(set([col for col in filtered_data.columns if 'fecha' in col or 'fini' in col]) - set(['Fecha_emision']))
 selection = list(set(filtered_data.columns) - set(discard + discard_dates))
+logging.info(f'Discarded variables (semantics): {len(discard)} | {len(discard_dates)}')
+logging.info(f"Columns after removal: {len(filtered_data.columns)} \n {set(filtered_data.columns)}")
 filtered_data = filtered_data[selection]
 
 # Laboratory variables can be obtained by exclusion
@@ -119,7 +120,7 @@ file_vars['analit_full'] = list(set(file_vars['analit_full'] + list(set(filtered
     medications + comorbidities + ["REGISTRO", "Fingplan", "Faltplan", "Fecha_emision", "Critico", "Ola", "UCI",
                                       "Ventilacion", "Exitus", "TiempoIngreso"] + file_vars['vitals'] + file_vars['track']))))
 #with open(FILE_VARIABLES, 'w') as file:
-# json.dump(file_vars, file, indent=4)
+#    json.dump(file_vars, file, indent=4)
 
 # Consistency check
 constants = {
@@ -147,23 +148,8 @@ for key in constants.keys():
         ing = inconsistencies.iloc[i]['Fingplan']
         filtered_data.loc[(filtered_data['REGISTRO'] == reg) & (filtered_data['Fingplan'] == ing), key] = constants[key]
 
-# Variables for maximum, minimum, mean, and first values
-max_vars = ["SaturaMax", "TempMax", "FCMax","TADMax", "TASMax"]
-min_vars = ["SaturaMin", "TempMin", "FCMin","TADMin", "TASMin"]
-mean_vars = ["SaturacPrimera", "TempPrimera", "FCprimera","TADprimera", "TASprimera"]
-first_vars = list(set(filtered_data.columns) - set(max_vars + min_vars + mean_vars + file_vars['analit_full'] + ['Fecha_emision']))
+final = filtered_data.columns
+removed = set(initial) - set(final)
+logging.info(f"Removed columns: {len(removed)} \n Final columns: {set(final)}")
 
-# Group by 'REGISTRO' and 'Fecha_emision' and take max and min values
-filtered_data = filtered_data.groupby(['REGISTRO', 'Fecha_emision'], as_index=False).agg({**{var: 'max' for var in max_vars}, **{var: 'min' for var in min_vars}}).reset_index()
-
-# Group by 'REGISTRO' and 'Fingplan' and take the first value
-filtered_data = filtered_data.groupby(['REGISTRO', 'Fingplan'], as_index=False).agg({var: 'first' for var in first_vars}).reset_index()
-
-# Fill NA with known values in the same emission
-laboratory = list(set(file_vars['analit_full']).intersection(set(filtered_data.columns)))
-filtered_data.groupby(['REGISTRO', 'Fecha_emision'])[laboratory].apply(lambda group: group.bfill().ffill()).reset_index()
-
-# Take the first value for the same emission date
-filtered_data = filtered_data.groupby(['REGISTRO', 'Fecha_emision']).first().reset_index()
-
-filtered_data.to_csv("./datos/datos_pre_outliers.csv")
+filtered_data.to_csv("./datos/datos_pre_aggregation.csv")
